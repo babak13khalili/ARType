@@ -3,99 +3,88 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AR Tag</title>
+    <title>AR Tag - Firebase Edition</title>
 
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
+      /* استایل‌های پایه صفحه */
       body {
         margin: 0;
         overflow: hidden;
-        background-color: #000;
+        background: #000;
         font-family: sans-serif;
       }
 
+      /* پنل شیشه‌ای پایین صفحه */
       #main-panel {
         position: absolute;
         bottom: 40px;
         left: 50%;
         transform: translateX(-50%);
-        width: 82%;
+        width: 85%;
         max-width: 380px;
-        background: rgba(0, 0, 0, 0.6);
-        backdrop-filter: blur(25px) saturate(160%);
-        -webkit-backdrop-filter: blur(25px) saturate(160%);
-        border-radius: 40px;
+        padding: 8px 12px;
+        z-index: 1000;
         display: flex;
         align-items: center;
-        padding: 8px 12px;
-        border: 0.5px solid rgba(255, 255, 255, 0.25);
+        border-radius: 40px;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(20px);
+        border: 0.5px solid rgba(255, 255, 255, 0.2);
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        z-index: 1000;
       }
 
+      /* دکمه انتخاب رنگ (سیاه/سفید) */
       #color-btn {
         width: 28px;
         height: 28px;
         border-radius: 50%;
-        background: #ffffff;
+        background: #fff;
         cursor: pointer;
-        flex-shrink: 0;
-        border: none;
-        transition: all 0.3s ease;
+        border: 1px solid rgba(255, 255, 255, 0.2);
       }
 
-      #input-wrapper {
-        flex-grow: 1;
-        padding: 0 12px;
-      }
-
+      /* کادر ورودی متن */
       input {
+        flex-grow: 1;
         background: transparent;
         border: none;
         color: #fff;
-        font-size: 13px;
-        width: 100%;
+        padding: 0 15px;
         outline: none;
-        letter-spacing: 2px;
+        letter-spacing: 1.5px;
         text-transform: uppercase;
       }
 
-      .divider {
-        width: 1px;
-        height: 15px;
-        background: rgba(255, 255, 255, 0.15);
-        margin: 0 5px;
-      }
-
+      /* دکمه ارسال (فلش) */
       #submit-btn {
-        width: 36px;
-        height: 36px;
         background: transparent;
         border: none;
         cursor: pointer;
       }
-
       .arrow-svg {
         stroke: #fff;
         stroke-width: 2;
         fill: none;
       }
+      .divider {
+        width: 1px;
+        height: 16px;
+        background: rgba(255, 255, 255, 0.15);
+      }
     </style>
   </head>
   <body>
     <div id="main-panel">
-      <div id="color-btn"></div>
+      <div id="color-btn" title="Toggle Color"></div>
       <div class="divider"></div>
-      <div id="input-wrapper">
-        <input
-          type="text"
-          id="user-text"
-          placeholder="TYPE..."
-          maxlength="20"
-          spellcheck="false" />
-      </div>
+      <input
+        type="text"
+        id="user-text"
+        placeholder="LEAVE A TAG..."
+        maxlength="20" />
       <button id="submit-btn">
         <svg width="18" height="18" viewBox="0 0 24 24">
           <path class="arrow-svg" d="M12 19V5M5 12l7-7 7 7" />
@@ -106,46 +95,97 @@
     <a-scene
       mindar-image="imageTargetSrc: ./targets/targets.mind; uiScanning: no;"
       vr-mode-ui="enabled: false"
-      device-orientation-permission-ui="enabled: false"
       renderer="antialias: true; alpha: true">
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-      <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
-        <a-text
-          id="ar-text"
-          value=""
-          position="0 0 0.1"
-          align="center"
-          color="#FFFFFF"
-          width="3.5"
-          shader="msdf"
-          animation="property: position; to: 0 0.04 0.1; dir: alternate; dur: 2500; loop: true; easing: easeInOutQuad">
-        </a-text>
-      </a-entity>
+      <a-entity
+        id="target-anchor"
+        mindar-image-target="targetIndex: 0"></a-entity>
     </a-scene>
 
-    <script>
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+      import {
+        getDatabase,
+        ref,
+        push,
+        onChildAdded,
+      } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+      // تنظیمات فایربیس (با اطلاعات صحیح شما)
+      const firebaseConfig = {
+        apiKey: "AIzaSyC-3C2JeR33zqqUxSkGrZoMckqXezJgRcY",
+        authDomain: "b13artag26v01.firebaseapp.com",
+        databaseURL:
+          "https://b13artag26v01-default-rtdb.europe-west1.firebasedatabase.app",
+        projectId: "b13artag26v01",
+        storageBucket: "b13artag26v01.firebasestorage.app",
+        messagingSenderId: "244929806839",
+        appId: "1:244929806839:web:e0352f4d0717ca73b26ef2",
+      };
+
+      // راه اندازی فایربیس
+      const app = initializeApp(firebaseConfig);
+      const db = getDatabase(app);
+      const dbRef = ref(db, "ar_tags");
+
+      // المان‌های صفحه
       const input = document.getElementById("user-text");
-      const arText = document.getElementById("ar-text");
       const colorBtn = document.getElementById("color-btn");
       const submitBtn = document.getElementById("submit-btn");
+      const anchor = document.getElementById("target-anchor");
 
       let isWhite = true;
 
+      // تغییر رنگ دکمه
       colorBtn.addEventListener("click", () => {
         isWhite = !isWhite;
         colorBtn.style.backgroundColor = isWhite ? "#FFFFFF" : "#000000";
       });
 
-      submitBtn.addEventListener("click", () => {
+      // ارسال داده به فایربیس
+      const sendTag = () => {
         const val = input.value.trim().toUpperCase();
         if (!val) return;
-        arText.setAttribute("value", val);
-        arText.setAttribute("color", isWhite ? "#FFFFFF" : "#000000");
+
+        push(dbRef, {
+          text: val,
+          color: isWhite ? "#FFFFFF" : "#000000",
+          pos: {
+            x: (Math.random() - 0.5) * 1.5,
+            y: (Math.random() - 0.5) * 1.5,
+            z: Math.random() * 0.1,
+          },
+        });
+        input.value = "";
+      };
+
+      submitBtn.addEventListener("click", sendTag);
+      input.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") sendTag();
       });
 
-      input.addEventListener("keypress", (e) => {
-        if (e.key === "Enter") submitBtn.click();
+      // دریافت داده‌ها و ساختن تگ‌ها در فضای AR
+      onChildAdded(dbRef, (snapshot) => {
+        const data = snapshot.val();
+        const textEl = document.createElement("a-text");
+
+        textEl.setAttribute("value", data.text);
+        textEl.setAttribute("color", data.color);
+        textEl.setAttribute("align", "center");
+        textEl.setAttribute("width", "2.5");
+        textEl.setAttribute("shader", "msdf");
+        textEl.setAttribute(
+          "position",
+          `${data.pos.x} ${data.pos.y} ${data.pos.z}`,
+        );
+
+        // انیمیشن ظاهر شدن
+        textEl.setAttribute(
+          "animation",
+          "property: opacity; from: 0; to: 1; dur: 800; easing: easeOutQuad",
+        );
+
+        anchor.appendChild(textEl);
       });
     </script>
   </body>
