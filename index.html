@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AR Type Project</title>
+    <title>AR Tag</title>
 
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
@@ -12,111 +12,136 @@
       body {
         margin: 0;
         overflow: hidden;
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #000;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
       }
 
-      /* UI Overlay Styling */
-      #input-container {
+      /* تیره تر کردن کادر با حفظ شفافیت */
+      #main-panel {
         position: absolute;
-        bottom: 30px;
+        bottom: 40px;
         left: 50%;
         transform: translateX(-50%);
-        width: 85%;
-        max-width: 400px;
+        width: 82%;
+        max-width: 380px;
+        /* تغییر از رنگ سفید بسیار شفاف به مشکی ملایم شیشه ای */
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(25px) saturate(160%);
+        -webkit-backdrop-filter: blur(25px) saturate(160%);
+        border-radius: 40px;
         display: flex;
         align-items: center;
-        background: rgba(0, 0, 0, 0.6);
-        backdrop-filter: blur(15px);
-        padding: 12px 20px;
-        border-radius: 50px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 8px 12px;
+        /* کادر نئونی با وضوح کمی بیشتر برای تضاد با سیاهی */
+        border: 0.5px solid rgba(255, 255, 255, 0.25);
+        box-shadow:
+          0 10px 30px rgba(0, 0, 0, 0.5),
+          inset 0 0 1px rgba(255, 255, 255, 0.1);
         z-index: 1000;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-      }
-
-      input {
-        flex-grow: 1;
-        background: transparent;
-        border: none;
-        color: white;
-        font-size: 16px;
-        outline: none;
-        padding: 5px 10px;
       }
 
       #color-btn {
-        width: 24px;
-        height: 24px;
+        width: 28px;
+        height: 28px;
         border-radius: 50%;
-        border: 2px solid white;
-        background: #00ffd1;
+        background: #ffffff;
         cursor: pointer;
-        transition: transform 0.2s;
+        flex-shrink: 0;
+        margin-left: 5px;
+        border: none;
+        box-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
+        transition: all 0.3s ease;
       }
 
       #color-btn:active {
-        transform: scale(0.9);
+        transform: scale(0.8);
       }
 
-      /* Loading Screen UI */
-      #scanning-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
+      #input-wrapper {
+        flex-grow: 1;
+        padding: 0 12px;
+      }
+
+      input {
+        background: transparent;
+        border: none;
+        color: #fff;
+        font-size: 13px;
+        width: 100%;
+        outline: none;
+        font-weight: 300;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+      }
+
+      input::placeholder {
+        color: rgba(255, 255, 255, 0.25);
+      }
+
+      .divider {
+        width: 1px;
+        height: 15px;
+        background: rgba(255, 255, 255, 0.15);
+        margin: 0 5px;
+      }
+
+      #submit-btn {
+        width: 36px;
+        height: 36px;
+        background: transparent;
+        border: none;
         display: flex;
         justify-content: center;
         align-items: center;
-        color: white;
-        z-index: 999;
-        pointer-events: none;
+        cursor: pointer;
+        flex-shrink: 0;
       }
-      .hidden {
-        display: none !important;
+
+      .arrow-svg {
+        stroke: #fff;
+        stroke-width: 2;
+        fill: none;
       }
     </style>
   </head>
   <body>
-    <div id="scanning-overlay">
-      <p>Scanning for target...</p>
-    </div>
-
-    <div id="input-container">
-      <input
-        type="text"
-        id="user-text"
-        placeholder="Type your message..."
-        maxlength="30" />
+    <div id="main-panel">
       <div id="color-btn"></div>
+      <div class="divider"></div>
+      <div id="input-wrapper">
+        <input
+          type="text"
+          id="user-text"
+          placeholder="TYPE..."
+          maxlength="20"
+          spellcheck="false" />
+      </div>
+      <button id="submit-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24">
+          <path class="arrow-svg" d="M12 19V5M5 12l7-7 7 7" />
+        </svg>
+      </button>
     </div>
 
     <a-scene
-      mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001;"
-      color-space="sRGB"
-      renderer="colorManagement: true, physicallyCorrectLights"
+      mindar-image="imageTargetSrc: ./targets.mind;"
       vr-mode-ui="enabled: false"
-      device-orientation-permission-ui="enabled: false">
+      device-orientation-permission-ui="enabled: false"
+      renderer="antialias: true; alpha: true">
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
       <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
         <a-text
           id="ar-text"
-          value="Hello World"
+          value=""
           position="0 0 0.1"
           align="center"
-          color="#00FFD1"
-          width="3"
-          font="aileronfont"
-          animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1500; loop: true; easing: easeInOutQuad">
+          color="#FFFFFF"
+          width="3.5"
+          shader="msdf"
+          animation="property: position; to: 0 0.04 0.1; dir: alternate; dur: 2500; loop: true; easing: easeInOutQuad">
         </a-text>
-
-        <a-plane
-          position="0 0 0.05"
-          width="1.5"
-          height="0.4"
-          material="opacity: 0.3; transparent: true; color: #000"></a-plane>
       </a-entity>
     </a-scene>
 
@@ -124,30 +149,28 @@
       const input = document.getElementById("user-text");
       const arText = document.getElementById("ar-text");
       const colorBtn = document.getElementById("color-btn");
-      const scanningOverlay = document.getElementById("scanning-overlay");
-      const targetAnchor = document.getElementById("target-anchor");
+      const submitBtn = document.getElementById("submit-btn");
 
-      // Update AR text as user types
-      input.addEventListener("input", (e) => {
-        arText.setAttribute("value", e.target.value || "Type Something");
-      });
+      let isWhite = true;
 
-      // Simple color toggle
-      const colors = ["#00FFD1", "#FF0055", "#FFFF00", "#FFFFFF"];
-      let colorIndex = 0;
       colorBtn.addEventListener("click", () => {
-        colorIndex = (colorIndex + 1) % colors.length;
-        arText.setAttribute("color", colors[colorIndex]);
-        colorBtn.style.backgroundColor = colors[colorIndex];
+        isWhite = !isWhite;
+        const newColor = isWhite ? "#FFFFFF" : "#000000";
+        colorBtn.style.backgroundColor = newColor;
+        colorBtn.style.boxShadow = isWhite
+          ? "0 0 12px rgba(255, 255, 255, 0.2)"
+          : "0 0 12px rgba(0, 0, 0, 0.5)";
       });
 
-      // Hide scanning overlay when target is found
-      targetAnchor.addEventListener("targetFound", (event) => {
-        scanningOverlay.classList.add("hidden");
+      submitBtn.addEventListener("click", () => {
+        const val = input.value.trim().toUpperCase();
+        if (!val) return;
+        arText.setAttribute("value", val);
+        arText.setAttribute("color", isWhite ? "#FFFFFF" : "#000000");
       });
 
-      targetAnchor.addEventListener("targetLost", (event) => {
-        scanningOverlay.classList.remove("hidden");
+      input.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") submitBtn.click();
       });
     </script>
   </body>
