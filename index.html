@@ -1,58 +1,153 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AR Type Project</title>
+
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      /* UI Overlay Styling */
       #input-container {
         position: absolute;
-        bottom: 20px;
+        bottom: 30px;
         left: 50%;
         transform: translateX(-50%);
-        z-index: 1000;
+        width: 85%;
+        max-width: 400px;
         display: flex;
-        gap: 10px;
+        align-items: center;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(15px);
+        padding: 12px 20px;
+        border-radius: 50px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        z-index: 1000;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
       }
+
       input {
-        padding: 10px;
-        border-radius: 5px;
+        flex-grow: 1;
+        background: transparent;
         border: none;
+        color: white;
+        font-size: 16px;
+        outline: none;
+        padding: 5px 10px;
+      }
+
+      #color-btn {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 2px solid white;
+        background: #00ffd1;
+        cursor: pointer;
+        transition: transform 0.2s;
+      }
+
+      #color-btn:active {
+        transform: scale(0.9);
+      }
+
+      /* Loading Screen UI */
+      #scanning-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        z-index: 999;
+        pointer-events: none;
+      }
+      .hidden {
+        display: none !important;
       }
     </style>
   </head>
   <body>
+    <div id="scanning-overlay">
+      <p>Scanning for target...</p>
+    </div>
+
     <div id="input-container">
-      <input type="text" id="user-text" placeholder="چیزی تایپ کنید..." />
+      <input
+        type="text"
+        id="user-text"
+        placeholder="Type your message..."
+        maxlength="30" />
+      <div id="color-btn"></div>
     </div>
 
     <a-scene
-      mindar-image="imageTargetSrc: ./targets.mind;"
+      mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001;"
       color-space="sRGB"
       renderer="colorManagement: true, physicallyCorrectLights"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: false">
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <a-entity mindar-image-target="targetIndex: 0">
+      <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
         <a-text
           id="ar-text"
-          value="سلام!"
-          position="0 0 0"
+          value="Hello World"
+          position="0 0 0.1"
           align="center"
-          color="#FF5722"
-          width="2"></a-text>
+          color="#00FFD1"
+          width="3"
+          font="aileronfont"
+          animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1500; loop: true; easing: easeInOutQuad">
+        </a-text>
+
+        <a-plane
+          position="0 0 0.05"
+          width="1.5"
+          height="0.4"
+          material="opacity: 0.3; transparent: true; color: #000"></a-plane>
       </a-entity>
     </a-scene>
 
     <script>
       const input = document.getElementById("user-text");
       const arText = document.getElementById("ar-text");
+      const colorBtn = document.getElementById("color-btn");
+      const scanningOverlay = document.getElementById("scanning-overlay");
+      const targetAnchor = document.getElementById("target-anchor");
 
-      // هماهنگ کردن متن تایپ شده با متن توی دنیای AR
+      // Update AR text as user types
       input.addEventListener("input", (e) => {
-        arText.setAttribute("value", e.target.value);
+        arText.setAttribute("value", e.target.value || "Type Something");
+      });
+
+      // Simple color toggle
+      const colors = ["#00FFD1", "#FF0055", "#FFFF00", "#FFFFFF"];
+      let colorIndex = 0;
+      colorBtn.addEventListener("click", () => {
+        colorIndex = (colorIndex + 1) % colors.length;
+        arText.setAttribute("color", colors[colorIndex]);
+        colorBtn.style.backgroundColor = colors[colorIndex];
+      });
+
+      // Hide scanning overlay when target is found
+      targetAnchor.addEventListener("targetFound", (event) => {
+        scanningOverlay.classList.add("hidden");
+      });
+
+      targetAnchor.addEventListener("targetLost", (event) => {
+        scanningOverlay.classList.remove("hidden");
       });
     </script>
   </body>
