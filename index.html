@@ -10,13 +10,13 @@
 
     <style>
       /* فراخوانی فونت برای رابط کاربری پنل */
-      @import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap");
+      @import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap");
 
       body {
         margin: 0;
         overflow: hidden;
         background: #000;
-        font-family: "Space Mono", monospace;
+        font-family: "Roboto", sans-serif;
       }
 
       #main-panel {
@@ -60,7 +60,7 @@
         letter-spacing: 1.5px;
         text-transform: uppercase;
         /* اعمال فونت به اینپوت */
-        font-family: "Space Mono", monospace;
+        font-family: "Roboto", sans-serif;
         font-weight: 400;
       }
       .divider {
@@ -110,7 +110,7 @@
       mindar-image="imageTargetSrc: ./Targets/targets.mind; uiScanning: no; filterMinCF: 0.0001; filterBeta: 0.001; missTolerance: 500; warmupTolerance: 1;"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: false"
-      renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;">
+      renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;precision: highp; colorManagement: true;">
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
       <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
@@ -160,8 +160,8 @@
           text: val,
           color: isWhite ? "#FFFFFF" : "#000000",
           pos: {
-            x: (Math.random() - 0.5) * 1,
-            y: (Math.random() - 0.5) * 1,
+            x: (Math.random() - 0.5) * 0.3,
+            y: (Math.random() - 0.5) * 0.3,
             z: 0.01,
           },
         });
@@ -180,15 +180,17 @@
         textEl.setAttribute("value", data.text);
         textEl.setAttribute("color", data.color);
         textEl.setAttribute("align", "center");
-        textEl.setAttribute("width", "0.5");
+        textEl.setAttribute("width", "0.3");
         textEl.setAttribute("wrap-count", "15");
-        textEl.setAttribute("font", "monoid");
+        textEl.setAttribute("font", "roboto");
         textEl.setAttribute(
           "material",
           "transparent: true; side: double; depthTest: false;",
         );
-        textEl.setAttribute("position", `${data.pos.x} ${data.pos.y} 0.02`);
-
+        textEl.setAttribute(
+          "position",
+          `${data.pos.x} ${data.pos.y} ${data.pos.z}`,
+        );
         anchor.appendChild(textEl);
       });
     </script>
