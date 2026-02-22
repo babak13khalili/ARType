@@ -3,17 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AR Tag - Clean Single Background</title>
+    <title>AR Tag</title>
 
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
+      /* فراخوانی فونت برای رابط کاربری پنل */
+      @import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap");
+
       body {
         margin: 0;
         overflow: hidden;
         background: #000;
-        font-family: sans-serif;
+        font-family: "Space Mono", monospace;
       }
 
       #main-panel {
@@ -56,8 +59,10 @@
         outline: none;
         letter-spacing: 1.5px;
         text-transform: uppercase;
+        /* اعمال فونت به اینپوت */
+        font-family: "Space Mono", monospace;
+        font-weight: 400;
       }
-
       .divider {
         width: 1px;
         height: 16px;
@@ -136,12 +141,10 @@
       const app = initializeApp(firebaseConfig);
       const db = getDatabase(app);
       const dbRef = ref(db, "ar_tags");
-
       const input = document.getElementById("user-text");
       const colorBtn = document.getElementById("color-btn");
       const submitBtn = document.getElementById("submit-btn");
       const anchor = document.getElementById("target-anchor");
-
       let isWhite = true;
 
       colorBtn.addEventListener("click", () => {
@@ -157,8 +160,8 @@
           text: val,
           color: isWhite ? "#FFFFFF" : "#000000",
           pos: {
-            x: (Math.random() - 0.5) * 1.5,
-            y: (Math.random() - 0.5) * 1.5,
+            x: (Math.random() - 0.5) * 1,
+            y: (Math.random() - 0.5) * 1,
             z: 0.01,
           },
         });
@@ -173,23 +176,18 @@
 
       onChildAdded(dbRef, (snapshot) => {
         const data = snapshot.val();
-
         const textEl = document.createElement("a-text");
-
         textEl.setAttribute("value", data.text);
         textEl.setAttribute("color", data.color);
         textEl.setAttribute("align", "center");
-        textEl.setAttribute("width", "1.2");
-        textEl.setAttribute("wrap-count", "20");
-        textEl.setAttribute("font", "roboto");
+        textEl.setAttribute("width", "0.5");
+        textEl.setAttribute("wrap-count", "15");
+        textEl.setAttribute("font", "monoid");
         textEl.setAttribute(
           "material",
           "transparent: true; side: double; depthTest: false;",
         );
-        textEl.setAttribute(
-          "position",
-          `${data.pos.x} ${data.pos.y} ${data.pos.z}`,
-        );
+        textEl.setAttribute("position", `${data.pos.x} ${data.pos.y} 0.02`);
 
         anchor.appendChild(textEl);
       });
