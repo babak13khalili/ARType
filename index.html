@@ -36,18 +36,9 @@
         border: 0.5px solid rgba(255, 255, 255, 0.2);
       }
 
-      #color-btn {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        background: #fff;
-        cursor: pointer;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-      }
-
       #input-wrapper {
         flex-grow: 1;
-        padding: 0 12px;
+        padding: 0 8px;
       }
 
       input {
@@ -63,13 +54,6 @@
         font-family: "Roboto", sans-serif;
         font-weight: 400;
       }
-      .divider {
-        width: 1px;
-        height: 16px;
-        background: rgba(255, 255, 255, 0.15);
-        margin: 0 5px;
-      }
-
       #submit-btn {
         background: transparent;
         border: none;
@@ -87,15 +71,12 @@
   <body>
     <!-- UI PANEL -->
     <div id="main-panel">
-      <div id="color-btn"></div>
-      <div class="divider"></div>
-
       <div id="input-wrapper">
         <input
           type="text"
           id="user-text"
           placeholder="LEAVE A TAG..."
-          maxlength="15" />
+          maxlength="50" />
       </div>
 
       <button id="submit-btn">
@@ -124,7 +105,10 @@
         getDatabase,
         ref,
         push,
+        query,
+        limitToLast,
         onChildAdded,
+        onChildRemoved,
       } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
       const firebaseConfig = {
@@ -141,28 +125,209 @@
       const app = initializeApp(firebaseConfig);
       const db = getDatabase(app);
       const dbRef = ref(db, "ar_tags");
+      const MAX_TAGS = 70;
+      const MIN_TAG_SCALE = 0.6;
+      const MAX_TAG_SCALE = 1.0;
+      const GLOBAL_TAG_SCALE = 0.5;
+      const HIGH_CONTRAST_PAIRS = [
+        { text: "#FFFFFF", bg: "#FF004D" },
+        { text: "#FFFFFF", bg: "#2962FF" },
+        { text: "#000000", bg: "#FFEA00" },
+        { text: "#000000", bg: "#00E5FF" },
+        { text: "#000000", bg: "#76FF03" },
+        { text: "#FFFFFF", bg: "#D500F9" },
+        { text: "#FFFFFF", bg: "#FF3D00" },
+        { text: "#000000", bg: "#00FFC8" },
+        { text: "#FFFFFF", bg: "#000000" },
+        { text: "#000000", bg: "#FFFFFF" },
+        { text: "#FF1744", bg: "#FFFFFF" },
+        { text: "#00B0FF", bg: "#000000" },
+      ];
+      const tagsQuery = query(dbRef, limitToLast(MAX_TAGS));
       const input = document.getElementById("user-text");
-      const colorBtn = document.getElementById("color-btn");
       const submitBtn = document.getElementById("submit-btn");
       const anchor = document.getElementById("target-anchor");
-      let isWhite = true;
+      const renderedTags = new Map();
+      const renderedOrder = [];
+      let colorBag = [];
+      const refillColorBag = () => {
+        colorBag = [...HIGH_CONTRAST_PAIRS];
+        for (let i = colorBag.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [colorBag[i], colorBag[j]] = [colorBag[j], colorBag[i]];
+        }
+      };
+      const getRandomColorPair = () => {
+        if (!colorBag.length) refillColorBag();
+        const pair = colorBag.pop();
+        return { textColor: pair.text, bgColor: pair.bg };
+      };
+      const makeTagTexture = (text, textColor, bgColor, ageFactor = 0) => {
+        const content = text || " ";
+        const fontSize = 96;
+        const padX = 56;
+        const padY = 28;
 
-      colorBtn.addEventListener("click", () => {
-        isWhite = !isWhite;
-        colorBtn.style.backgroundColor = isWhite ? "#FFFFFF" : "#000000";
-      });
+        const measureCanvas = document.createElement("canvas");
+        const measureCtx = measureCanvas.getContext("2d");
+        if (!measureCtx) return null;
+        measureCtx.font = `bold ${fontSize}px Arial`;
+        const textWidth = Math.ceil(measureCtx.measureText(content).width);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(256, textWidth + padX * 2);
+        canvas.height = fontSize + padY * 2;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return null;
+
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = textColor;
+        ctx.font = `bold ${fontSize}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(content, canvas.width / 2, canvas.height / 2);
+
+        // Add torn/grunge texture to older tags (opaque, no transparency fade).
+        const noiseCount = Math.floor(260 + ageFactor * 900);
+        for (let i = 0; i < noiseCount; i += 1) {
+          const x = Math.random() * canvas.width;
+          const y = Math.random() * canvas.height;
+          const w = 1 + Math.random() * 3;
+          const h = 1 + Math.random() * 3;
+          const alpha = 0.01 + ageFactor * 0.06;
+          ctx.fillStyle =
+            i % 2 === 0
+              ? `rgba(255,255,255,${alpha})`
+              : `rgba(0,0,0,${alpha * 0.9})`;
+          ctx.fillRect(x, y, w, h);
+        }
+
+        const scratchCount = Math.floor(ageFactor * 12);
+        for (let i = 0; i < scratchCount; i += 1) {
+          const y = Math.random() * canvas.height;
+          const thickness = 1 + Math.random() * 2;
+          const alpha = 0.04 + ageFactor * 0.08;
+          ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+          ctx.fillRect(0, y, canvas.width, thickness);
+        }
+
+        const tearColor = "#FFFFFF";
+        const edgeCuts = Math.floor(ageFactor * 34);
+        for (let i = 0; i < edgeCuts; i += 1) {
+          const side = Math.floor(Math.random() * 4);
+          const depth = 12 + Math.random() * (20 + ageFactor * 36);
+          const span = 16 + Math.random() * (26 + ageFactor * 36);
+          ctx.beginPath();
+          ctx.fillStyle = tearColor;
+
+          if (side === 0) {
+            const x = Math.random() * (canvas.width - span);
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x + span, 0);
+            ctx.lineTo(x + span * (0.2 + Math.random() * 0.6), depth);
+          } else if (side === 1) {
+            const x = Math.random() * (canvas.width - span);
+            ctx.moveTo(x, canvas.height);
+            ctx.lineTo(x + span, canvas.height);
+            ctx.lineTo(
+              x + span * (0.2 + Math.random() * 0.6),
+              canvas.height - depth,
+            );
+          } else if (side === 2) {
+            const y = Math.random() * (canvas.height - span);
+            ctx.moveTo(0, y);
+            ctx.lineTo(0, y + span);
+            ctx.lineTo(depth, y + span * (0.2 + Math.random() * 0.6));
+          } else {
+            const y = Math.random() * (canvas.height - span);
+            ctx.moveTo(canvas.width, y);
+            ctx.lineTo(canvas.width, y + span);
+            ctx.lineTo(
+              canvas.width - depth,
+              y + span * (0.2 + Math.random() * 0.6),
+            );
+          }
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        // Add a few random straight tear lines for extra worn detail.
+        const straightTears = Math.floor(ageFactor * 14);
+        for (let i = 0; i < straightTears; i += 1) {
+          const horizontal = Math.random() < 0.5;
+          const thickness = 1 + Math.random() * (1 + ageFactor * 2);
+          ctx.fillStyle = "rgba(255,255,255,0.95)";
+          if (horizontal) {
+            const y = Math.random() * canvas.height;
+            const length = 20 + Math.random() * (canvas.width * 0.45);
+            const x = Math.random() * Math.max(1, canvas.width - length);
+            ctx.fillRect(x, y, length, thickness);
+          } else {
+            const x = Math.random() * canvas.width;
+            const length = 20 + Math.random() * (canvas.height * 0.7);
+            const y = Math.random() * Math.max(1, canvas.height - length);
+            ctx.fillRect(x, y, thickness, length);
+          }
+        }
+
+        return {
+          url: canvas.toDataURL("image/png"),
+          ratio: canvas.width / canvas.height,
+        };
+      };
+
+      const updateTagAging = () => {
+        const total = renderedOrder.length;
+        if (!total) return;
+
+        for (let i = 0; i < total; i += 1) {
+          const key = renderedOrder[i];
+          const tag = renderedTags.get(key);
+          if (!tag) continue;
+
+          const ageFactor = total === 1 ? 0 : 1 - i / (total - 1);
+          const texture = makeTagTexture(
+            tag.data?.text || "",
+            tag.data?.color || "#FFFFFF",
+            tag.data?.bgColor || "#000000",
+            ageFactor,
+          );
+          if (texture) {
+            tag.cardEl.setAttribute("src", texture.url);
+            const cardHeight = 0.11;
+            const cardWidth = cardHeight * texture.ratio;
+            tag.cardEl.setAttribute("width", `${cardWidth}`);
+            tag.cardEl.setAttribute("height", `${cardHeight}`);
+          }
+          tag.cardEl.setAttribute(
+            "material",
+            "shader: flat; side: double; transparent: false; opacity: 1;",
+          );
+        }
+      };
 
       const sendTag = () => {
         const val = input.value.trim().toUpperCase();
         if (!val) return;
+        const { textColor, bgColor } = getRandomColorPair();
 
         push(dbRef, {
           text: val,
-          color: isWhite ? "#FFFFFF" : "#000000",
+          color: textColor,
+          bgColor,
           pos: {
-            x: (Math.random() - 0.5) * 0.3,
-            y: (Math.random() - 0.5) * 0.3,
-            z: 0.01,
+            x: (Math.random() - 0.5) * 0.4,
+            y: (Math.random() - 0.5) * 0.4,
+            z: 0.006 + Math.random() * 0.02,
+          },
+          scale:
+            MIN_TAG_SCALE + Math.random() * (MAX_TAG_SCALE - MIN_TAG_SCALE),
+          rot: {
+            x: (Math.random() - 0.5) * 20,
+            y: (Math.random() - 0.5) * 20,
+            z: (Math.random() - 0.5) * 40,
           },
         });
 
@@ -170,28 +335,58 @@
       };
 
       submitBtn.addEventListener("click", sendTag);
-      input.addEventListener("keypress", (e) => {
+      input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") sendTag();
       });
 
-      onChildAdded(dbRef, (snapshot) => {
+      onChildAdded(tagsQuery, (snapshot) => {
+        if (renderedTags.has(snapshot.key)) return;
         const data = snapshot.val();
-        const textEl = document.createElement("a-text");
-        textEl.setAttribute("value", data.text);
-        textEl.setAttribute("color", data.color);
-        textEl.setAttribute("align", "center");
-        textEl.setAttribute("width", "0.4");
-        textEl.setAttribute("wrap-count", "30");
-        textEl.setAttribute("font", "roboto");
-        textEl.setAttribute(
+        const textColor = data?.color || "#FFFFFF";
+        const bgColor =
+          data?.bgColor || (textColor === "#FFFFFF" ? "#000000" : "#FFFFFF");
+        const pos = data?.pos || { x: 0, y: 0, z: 0.01 };
+        const scale = typeof data?.scale === "number" ? data.scale : 1;
+        const rot = data?.rot || { x: 0, y: 0, z: 0 };
+        const texture = makeTagTexture(data?.text || "", textColor, bgColor, 0);
+        const tagEl = document.createElement("a-entity");
+        tagEl.setAttribute("position", `${pos.x} ${pos.y} ${pos.z}`);
+        const finalScale = scale * GLOBAL_TAG_SCALE;
+        tagEl.setAttribute(
+          "scale",
+          `${finalScale} ${finalScale} ${finalScale}`,
+        );
+        tagEl.setAttribute("rotation", `${rot.x} ${rot.y} ${rot.z}`);
+
+        const cardEl = document.createElement("a-plane");
+        const cardHeight = 0.11;
+        const cardWidth = texture ? cardHeight * texture.ratio : 0.32;
+        cardEl.setAttribute("width", `${cardWidth}`);
+        cardEl.setAttribute("height", `${cardHeight}`);
+        if (texture) cardEl.setAttribute("src", texture.url);
+        cardEl.setAttribute(
           "material",
-          "transparent: true; side: double; depthTest: false;",
+          "shader: flat; side: double; transparent: false; opacity: 1;",
         );
-        textEl.setAttribute(
-          "position",
-          `${data.pos.x} ${data.pos.y} ${data.pos.z}`,
-        );
-        anchor.appendChild(textEl);
+        tagEl.appendChild(cardEl);
+        anchor.appendChild(tagEl);
+        renderedTags.set(snapshot.key, {
+          entity: tagEl,
+          cardEl,
+          data: { ...data, color: textColor, bgColor },
+        });
+        renderedOrder.push(snapshot.key);
+        updateTagAging();
+      });
+
+      onChildRemoved(tagsQuery, (snapshot) => {
+        const tag = renderedTags.get(snapshot.key);
+        if (!tag) return;
+        tag.entity.remove();
+        renderedTags.delete(snapshot.key);
+        const idx = renderedOrder.indexOf(snapshot.key);
+        if (idx !== -1) renderedOrder.splice(idx, 1);
+        updateTagAging();
       });
     </script>
   </body>
