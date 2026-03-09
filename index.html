@@ -2,30 +2,45 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>AR Tag</title>
 
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-      /* فراخوانی فونت برای رابط کاربری پنل */
       @import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap");
 
+      :root {
+        --ui-font: "Roboto", sans-serif;
+      }
+
+      html,
       body {
         margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
         overflow: hidden;
         background: #000;
-        font-family: "Roboto", sans-serif;
+        font-family: var(--ui-font);
+        -webkit-text-size-adjust: 100%;
+        touch-action: manipulation;
+      }
+
+      body {
+        position: fixed;
+        inset: 0;
       }
 
       #main-panel {
-        position: absolute;
-        bottom: 40px;
+        position: fixed;
         left: 50%;
+        bottom: max(24px, env(safe-area-inset-bottom, 0px) + 16px);
         transform: translateX(-50%);
-        width: 85%;
-        max-width: 380px;
+        width: min(85%, 380px);
         padding: 8px 12px;
         z-index: 1000;
         display: flex;
@@ -33,7 +48,9 @@
         border-radius: 40px;
         background: rgba(0, 0, 0, 0.7);
         backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
         border: 0.5px solid rgba(255, 255, 255, 0.2);
+        box-sizing: border-box;
       }
 
       #input-wrapper {
@@ -41,29 +58,47 @@
         padding: 0 8px;
       }
 
-      input {
+      #user-text {
         background: transparent;
         border: none;
         color: #fff;
-        font-size: 13px;
+        font-size: 16px; /* prevents mobile browser zoom on focus */
         width: 100%;
         outline: none;
-        letter-spacing: 1.5px;
+        letter-spacing: 1.2px;
         text-transform: uppercase;
-        /* اعمال فونت به اینپوت */
-        font-family: "Roboto", sans-serif;
+        font-family: var(--ui-font);
         font-weight: 400;
+        line-height: 1.2;
+        appearance: none;
+        -webkit-appearance: none;
       }
+
+      #user-text::placeholder {
+        color: rgba(255, 255, 255, 0.72);
+      }
+
       #submit-btn {
         background: transparent;
         border: none;
         cursor: pointer;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
 
       .arrow-svg {
         stroke: #fff;
         stroke-width: 2;
         fill: none;
+      }
+
+      a-scene {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
       }
     </style>
   </head>
@@ -76,10 +111,14 @@
           type="text"
           id="user-text"
           placeholder="LEAVE A TAG..."
-          maxlength="50" />
+          maxlength="50"
+          autocapitalize="characters"
+          autocomplete="off"
+          autocorrect="off"
+          spellcheck="false" />
       </div>
 
-      <button id="submit-btn">
+      <button id="submit-btn" type="button" aria-label="Submit tag">
         <svg width="18" height="18" viewBox="0 0 24 24">
           <path class="arrow-svg" d="M12 19V5M5 12l7-7 7 7" />
         </svg>
@@ -91,14 +130,13 @@
       mindar-image="imageTargetSrc: ./Targets/targets.mind; uiScanning: no; filterMinCF: 0.0001; filterBeta: 0.001; missTolerance: 500; warmupTolerance: 1;"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: false"
-      renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;precision: highp; colorManagement: true;">
+      renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true; precision: highp; colorManagement: true;">
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-      <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
-      </a-entity>
+      <a-entity
+        id="target-anchor"
+        mindar-image-target="targetIndex: 0"></a-entity>
     </a-scene>
 
-    <!-- SCRIPT -->
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
       import {
@@ -107,8 +145,10 @@
         push,
         query,
         limitToLast,
+        orderByChild,
         onChildAdded,
         onChildRemoved,
+        remove,
       } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
       const firebaseConfig = {
@@ -125,10 +165,28 @@
       const app = initializeApp(firebaseConfig);
       const db = getDatabase(app);
       const dbRef = ref(db, "ar_tags");
-      const MAX_TAGS = 70;
+
+      // -----------------------------
+      // CONFIG
+      // -----------------------------
+      const MAX_TAGS = 50;
       const MIN_TAG_SCALE = 0.6;
       const MAX_TAG_SCALE = 1.0;
       const GLOBAL_TAG_SCALE = 0.5;
+
+      const TAG_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+      const AGE_BUCKETS = 6;
+      const AGE_BUCKET_MS = TAG_LIFETIME_MS / AGE_BUCKETS;
+
+      // Smaller texture + smaller card than before
+      const TEXTURE_FONT_SIZE = 76;
+      const TEXTURE_PAD_X = 44;
+      const TEXTURE_PAD_Y = 22;
+      const CARD_HEIGHT = 0.095;
+
+      const TAG_FONT_FAMILY = '"Roboto", Arial, sans-serif';
+      const TAG_FONT_WEIGHT = "700";
+
       const HIGH_CONTRAST_PAIRS = [
         { text: "#FFFFFF", bg: "#FF004D" },
         { text: "#FFFFFF", bg: "#2962FF" },
@@ -143,13 +201,27 @@
         { text: "#FF1744", bg: "#FFFFFF" },
         { text: "#00B0FF", bg: "#000000" },
       ];
-      const tagsQuery = query(dbRef, limitToLast(MAX_TAGS));
+
+      // Explicit timestamp ordering
+      const tagsQuery = query(
+        dbRef,
+        orderByChild("createdAt"),
+        limitToLast(MAX_TAGS),
+      );
+
       const input = document.getElementById("user-text");
       const submitBtn = document.getElementById("submit-btn");
       const anchor = document.getElementById("target-anchor");
-      const renderedTags = new Map();
-      const renderedOrder = [];
+
+      const renderedTags = new Map(); // key -> { entity, cardEl, data, createdAt, ageBucket }
+      const textureCache = new Map(); // cache by text|textColor|bgColor|ageBucket
+
       let colorBag = [];
+      let isSending = false;
+
+      // -----------------------------
+      // HELPERS
+      // -----------------------------
       const refillColorBag = () => {
         colorBag = [...HIGH_CONTRAST_PAIRS];
         for (let i = colorBag.length - 1; i > 0; i -= 1) {
@@ -157,78 +229,139 @@
           [colorBag[i], colorBag[j]] = [colorBag[j], colorBag[i]];
         }
       };
+
       const getRandomColorPair = () => {
         if (!colorBag.length) refillColorBag();
         const pair = colorBag.pop();
         return { textColor: pair.text, bgColor: pair.bg };
       };
-      const makeTagTexture = (text, textColor, bgColor, ageFactor = 0) => {
+
+      const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+      const getAgeMs = (createdAt) => {
+        if (typeof createdAt !== "number" || Number.isNaN(createdAt)) return 0;
+        return Math.max(0, Date.now() - createdAt);
+      };
+
+      const getAgeBucket = (createdAt) => {
+        const ageMs = getAgeMs(createdAt);
+        if (ageMs >= TAG_LIFETIME_MS) return AGE_BUCKETS - 1;
+        return clamp(Math.floor(ageMs / AGE_BUCKET_MS), 0, AGE_BUCKETS - 1);
+      };
+
+      const isExpired = (createdAt) => getAgeMs(createdAt) >= TAG_LIFETIME_MS;
+
+      const escapeCachePart = (value) =>
+        String(value ?? "").replace(/\|/g, "_");
+
+      const getTextureCacheKey = (text, textColor, bgColor, ageBucket) =>
+        [
+          escapeCachePart(text),
+          escapeCachePart(textColor),
+          escapeCachePart(bgColor),
+          ageBucket,
+        ].join("|");
+
+      const getBucketWearFactor = (ageBucket) => {
+        if (AGE_BUCKETS <= 1) return 0;
+        return ageBucket / (AGE_BUCKETS - 1);
+      };
+
+      const fontReady = async () => {
+        if (document.fonts && document.fonts.ready) {
+          try {
+            await document.fonts.ready;
+          } catch (err) {
+            console.warn("Font readiness wait failed:", err);
+          }
+        }
+      };
+
+      // -----------------------------
+      // TEXTURE GENERATION + CACHE
+      // -----------------------------
+      const makeTagTexture = (text, textColor, bgColor, ageBucket = 0) => {
         const content = text || " ";
-        const fontSize = 96;
-        const padX = 56;
-        const padY = 28;
+        const cacheKey = getTextureCacheKey(
+          content,
+          textColor,
+          bgColor,
+          ageBucket,
+        );
+
+        if (textureCache.has(cacheKey)) {
+          return textureCache.get(cacheKey);
+        }
+
+        const wearFactor = getBucketWearFactor(ageBucket);
 
         const measureCanvas = document.createElement("canvas");
         const measureCtx = measureCanvas.getContext("2d");
         if (!measureCtx) return null;
-        measureCtx.font = `bold ${fontSize}px Arial`;
+
+        measureCtx.font = `${TAG_FONT_WEIGHT} ${TEXTURE_FONT_SIZE}px ${TAG_FONT_FAMILY}`;
         const textWidth = Math.ceil(measureCtx.measureText(content).width);
 
         const canvas = document.createElement("canvas");
-        canvas.width = Math.max(256, textWidth + padX * 2);
-        canvas.height = fontSize + padY * 2;
+        canvas.width = Math.max(220, textWidth + TEXTURE_PAD_X * 2);
+        canvas.height = TEXTURE_FONT_SIZE + TEXTURE_PAD_Y * 2;
+
         const ctx = canvas.getContext("2d");
         if (!ctx) return null;
 
+        // Base
         ctx.fillStyle = bgColor;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+        // Text
         ctx.fillStyle = textColor;
-        ctx.font = `bold ${fontSize}px Arial`;
+        ctx.font = `${TAG_FONT_WEIGHT} ${TEXTURE_FONT_SIZE}px ${TAG_FONT_FAMILY}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(content, canvas.width / 2, canvas.height / 2);
 
-        // Add torn/grunge texture to older tags (opaque, no transparency fade).
-        const noiseCount = Math.floor(260 + ageFactor * 900);
+        // Wear / aging by 6 monthly stages
+        const noiseCount = Math.floor(80 + wearFactor * 260);
         for (let i = 0; i < noiseCount; i += 1) {
           const x = Math.random() * canvas.width;
           const y = Math.random() * canvas.height;
-          const w = 1 + Math.random() * 3;
-          const h = 1 + Math.random() * 3;
-          const alpha = 0.01 + ageFactor * 0.06;
+          const w = 1 + Math.random() * 2.2;
+          const h = 1 + Math.random() * 2.2;
+          const alpha = 0.008 + wearFactor * 0.035;
+
           ctx.fillStyle =
             i % 2 === 0
               ? `rgba(255,255,255,${alpha})`
-              : `rgba(0,0,0,${alpha * 0.9})`;
+              : `rgba(0,0,0,${alpha * 0.85})`;
+
           ctx.fillRect(x, y, w, h);
         }
 
-        const scratchCount = Math.floor(ageFactor * 12);
+        const scratchCount = Math.floor(wearFactor * 8);
         for (let i = 0; i < scratchCount; i += 1) {
           const y = Math.random() * canvas.height;
-          const thickness = 1 + Math.random() * 2;
-          const alpha = 0.04 + ageFactor * 0.08;
+          const thickness = 1 + Math.random() * 1.5;
+          const alpha = 0.025 + wearFactor * 0.06;
           ctx.fillStyle = `rgba(0,0,0,${alpha})`;
           ctx.fillRect(0, y, canvas.width, thickness);
         }
 
-        const tearColor = "#FFFFFF";
-        const edgeCuts = Math.floor(ageFactor * 34);
+        const edgeCuts = Math.floor(wearFactor * 18);
         for (let i = 0; i < edgeCuts; i += 1) {
           const side = Math.floor(Math.random() * 4);
-          const depth = 12 + Math.random() * (20 + ageFactor * 36);
-          const span = 16 + Math.random() * (26 + ageFactor * 36);
+          const depth = 8 + Math.random() * (14 + wearFactor * 20);
+          const span = 12 + Math.random() * (18 + wearFactor * 24);
+
           ctx.beginPath();
-          ctx.fillStyle = tearColor;
+          ctx.fillStyle = "#FFFFFF";
 
           if (side === 0) {
-            const x = Math.random() * (canvas.width - span);
+            const x = Math.random() * Math.max(1, canvas.width - span);
             ctx.moveTo(x, 0);
             ctx.lineTo(x + span, 0);
             ctx.lineTo(x + span * (0.2 + Math.random() * 0.6), depth);
           } else if (side === 1) {
-            const x = Math.random() * (canvas.width - span);
+            const x = Math.random() * Math.max(1, canvas.width - span);
             ctx.moveTo(x, canvas.height);
             ctx.lineTo(x + span, canvas.height);
             ctx.lineTo(
@@ -236,12 +369,12 @@
               canvas.height - depth,
             );
           } else if (side === 2) {
-            const y = Math.random() * (canvas.height - span);
+            const y = Math.random() * Math.max(1, canvas.height - span);
             ctx.moveTo(0, y);
             ctx.lineTo(0, y + span);
             ctx.lineTo(depth, y + span * (0.2 + Math.random() * 0.6));
           } else {
-            const y = Math.random() * (canvas.height - span);
+            const y = Math.random() * Math.max(1, canvas.height - span);
             ctx.moveTo(canvas.width, y);
             ctx.lineTo(canvas.width, y + span);
             ctx.lineTo(
@@ -249,108 +382,128 @@
               y + span * (0.2 + Math.random() * 0.6),
             );
           }
+
           ctx.closePath();
           ctx.fill();
         }
 
-        // Add a few random straight tear lines for extra worn detail.
-        const straightTears = Math.floor(ageFactor * 14);
+        const straightTears = Math.floor(wearFactor * 8);
         for (let i = 0; i < straightTears; i += 1) {
           const horizontal = Math.random() < 0.5;
-          const thickness = 1 + Math.random() * (1 + ageFactor * 2);
-          ctx.fillStyle = "rgba(255,255,255,0.95)";
+          const thickness = 1 + Math.random() * (1 + wearFactor * 1.2);
+          ctx.fillStyle = "rgba(255,255,255,0.92)";
+
           if (horizontal) {
             const y = Math.random() * canvas.height;
-            const length = 20 + Math.random() * (canvas.width * 0.45);
+            const length = 16 + Math.random() * (canvas.width * 0.34);
             const x = Math.random() * Math.max(1, canvas.width - length);
             ctx.fillRect(x, y, length, thickness);
           } else {
             const x = Math.random() * canvas.width;
-            const length = 20 + Math.random() * (canvas.height * 0.7);
+            const length = 16 + Math.random() * (canvas.height * 0.55);
             const y = Math.random() * Math.max(1, canvas.height - length);
             ctx.fillRect(x, y, thickness, length);
           }
         }
 
-        return {
+        const texture = {
           url: canvas.toDataURL("image/png"),
           ratio: canvas.width / canvas.height,
         };
+
+        textureCache.set(cacheKey, texture);
+        return texture;
       };
 
-      const updateTagAging = () => {
-        const total = renderedOrder.length;
-        if (!total) return;
+      // -----------------------------
+      // RENDER / UPDATE
+      // -----------------------------
+      const applyTextureToTag = (tagObj) => {
+        if (!tagObj || !tagObj.cardEl || !tagObj.data) return;
 
-        for (let i = 0; i < total; i += 1) {
-          const key = renderedOrder[i];
-          const tag = renderedTags.get(key);
-          if (!tag) continue;
+        const ageBucket = getAgeBucket(tagObj.createdAt);
+        if (tagObj.ageBucket === ageBucket) return;
 
-          const ageFactor = total === 1 ? 0 : 1 - i / (total - 1);
-          const texture = makeTagTexture(
-            tag.data?.text || "",
-            tag.data?.color || "#FFFFFF",
-            tag.data?.bgColor || "#000000",
-            ageFactor,
-          );
-          if (texture) {
-            tag.cardEl.setAttribute("src", texture.url);
-            const cardHeight = 0.11;
-            const cardWidth = cardHeight * texture.ratio;
-            tag.cardEl.setAttribute("width", `${cardWidth}`);
-            tag.cardEl.setAttribute("height", `${cardHeight}`);
-          }
-          tag.cardEl.setAttribute(
-            "material",
-            "shader: flat; side: double; transparent: false; opacity: 1;",
-          );
+        const texture = makeTagTexture(
+          tagObj.data.text || "",
+          tagObj.data.color || "#FFFFFF",
+          tagObj.data.bgColor || "#000000",
+          ageBucket,
+        );
+
+        if (!texture) return;
+
+        const cardWidth = CARD_HEIGHT * texture.ratio;
+        tagObj.cardEl.setAttribute("width", `${cardWidth}`);
+        tagObj.cardEl.setAttribute("height", `${CARD_HEIGHT}`);
+        tagObj.cardEl.setAttribute("src", texture.url);
+        tagObj.cardEl.setAttribute(
+          "material",
+          "shader: flat; side: front; transparent: false; opacity: 1;",
+        );
+
+        tagObj.ageBucket = ageBucket;
+      };
+
+      const updateAllTagAges = () => {
+        for (const [, tagObj] of renderedTags) {
+          if (isExpired(tagObj.createdAt)) continue;
+          applyTextureToTag(tagObj);
         }
       };
 
-      const sendTag = () => {
-        const val = input.value.trim().toUpperCase();
-        if (!val) return;
-        const { textColor, bgColor } = getRandomColorPair();
-
-        push(dbRef, {
-          text: val,
-          color: textColor,
-          bgColor,
-          pos: {
-            x: (Math.random() - 0.5) * 0.4,
-            y: (Math.random() - 0.5) * 0.4,
-            z: 0.006 + Math.random() * 0.02,
-          },
-          scale:
-            MIN_TAG_SCALE + Math.random() * (MAX_TAG_SCALE - MIN_TAG_SCALE),
-          rot: {
-            x: (Math.random() - 0.5) * 20,
-            y: (Math.random() - 0.5) * 20,
-            z: (Math.random() - 0.5) * 40,
-          },
-        });
-
-        input.value = "";
+      const removeRenderedTag = (key) => {
+        const tag = renderedTags.get(key);
+        if (!tag) return;
+        tag.entity.remove();
+        renderedTags.delete(key);
       };
 
-      submitBtn.addEventListener("click", sendTag);
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") sendTag();
-      });
+      const cleanupExpiredTags = async () => {
+        const tasks = [];
 
-      onChildAdded(tagsQuery, (snapshot) => {
-        if (renderedTags.has(snapshot.key)) return;
-        const data = snapshot.val();
+        for (const [key, tagObj] of renderedTags) {
+          if (isExpired(tagObj.createdAt)) {
+            tasks.push(
+              remove(ref(db, `ar_tags/${key}`)).catch((err) => {
+                console.warn("Failed to remove expired tag:", key, err);
+              }),
+            );
+          }
+        }
+
+        if (tasks.length) {
+          await Promise.all(tasks);
+        }
+      };
+
+      const createTagElement = (snapshotKey, data) => {
         const textColor = data?.color || "#FFFFFF";
         const bgColor =
           data?.bgColor || (textColor === "#FFFFFF" ? "#000000" : "#FFFFFF");
         const pos = data?.pos || { x: 0, y: 0, z: 0.01 };
         const scale = typeof data?.scale === "number" ? data.scale : 1;
         const rot = data?.rot || { x: 0, y: 0, z: 0 };
-        const texture = makeTagTexture(data?.text || "", textColor, bgColor, 0);
+        const createdAt =
+          typeof data?.createdAt === "number" ? data.createdAt : Date.now();
+
+        if (isExpired(createdAt)) {
+          remove(ref(db, `ar_tags/${snapshotKey}`)).catch((err) => {
+            console.warn("Failed to remove already expired tag:", err);
+          });
+          return;
+        }
+
+        const texture = makeTagTexture(
+          data?.text || "",
+          textColor,
+          bgColor,
+          getAgeBucket(createdAt),
+        );
+
         const tagEl = document.createElement("a-entity");
         tagEl.setAttribute("position", `${pos.x} ${pos.y} ${pos.z}`);
+
         const finalScale = scale * GLOBAL_TAG_SCALE;
         tagEl.setAttribute(
           "scale",
@@ -359,35 +512,119 @@
         tagEl.setAttribute("rotation", `${rot.x} ${rot.y} ${rot.z}`);
 
         const cardEl = document.createElement("a-plane");
-        const cardHeight = 0.11;
-        const cardWidth = texture ? cardHeight * texture.ratio : 0.32;
+        const cardWidth = texture ? CARD_HEIGHT * texture.ratio : 0.28;
         cardEl.setAttribute("width", `${cardWidth}`);
-        cardEl.setAttribute("height", `${cardHeight}`);
+        cardEl.setAttribute("height", `${CARD_HEIGHT}`);
         if (texture) cardEl.setAttribute("src", texture.url);
+
+        // front only = sticker/card facing one direction only
         cardEl.setAttribute(
           "material",
-          "shader: flat; side: double; transparent: false; opacity: 1;",
+          "shader: flat; side: front; transparent: false; opacity: 1;",
         );
+
         tagEl.appendChild(cardEl);
         anchor.appendChild(tagEl);
-        renderedTags.set(snapshot.key, {
+
+        renderedTags.set(snapshotKey, {
           entity: tagEl,
           cardEl,
           data: { ...data, color: textColor, bgColor },
+          createdAt,
+          ageBucket: -1,
         });
-        renderedOrder.push(snapshot.key);
-        updateTagAging();
+
+        applyTextureToTag(renderedTags.get(snapshotKey));
+      };
+
+      // -----------------------------
+      // INPUT / SUBMIT
+      // -----------------------------
+      const sendTag = async () => {
+        const val = input.value.trim().toUpperCase();
+        if (!val || isSending) return;
+
+        isSending = true;
+        submitBtn.disabled = true;
+
+        const { textColor, bgColor } = getRandomColorPair();
+
+        try {
+          await push(dbRef, {
+            text: val,
+            color: textColor,
+            bgColor,
+            createdAt: Date.now(),
+            pos: {
+              x: (Math.random() - 0.5) * 0.4,
+              y: (Math.random() - 0.5) * 0.4,
+              z: 0.006 + Math.random() * 0.02,
+            },
+            scale:
+              MIN_TAG_SCALE + Math.random() * (MAX_TAG_SCALE - MIN_TAG_SCALE),
+            rot: {
+              x: (Math.random() - 0.5) * 20,
+              y: (Math.random() - 0.5) * 20,
+              z: (Math.random() - 0.5) * 40,
+            },
+          });
+
+          input.value = "";
+        } catch (err) {
+          console.error("Failed to send tag:", err);
+        } finally {
+          isSending = false;
+          submitBtn.disabled = false;
+        }
+      };
+
+      submitBtn.addEventListener("click", sendTag);
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          sendTag();
+        }
       });
 
-      onChildRemoved(tagsQuery, (snapshot) => {
-        const tag = renderedTags.get(snapshot.key);
-        if (!tag) return;
-        tag.entity.remove();
-        renderedTags.delete(snapshot.key);
-        const idx = renderedOrder.indexOf(snapshot.key);
-        if (idx !== -1) renderedOrder.splice(idx, 1);
-        updateTagAging();
+      // Additional mobile focus protection
+      input.addEventListener("focus", () => {
+        window.scrollTo(0, 0);
       });
+
+      // -----------------------------
+      // FIREBASE LIVE EVENTS
+      // -----------------------------
+      const init = async () => {
+        await fontReady();
+
+        onChildAdded(tagsQuery, (snapshot) => {
+          if (renderedTags.has(snapshot.key)) return;
+          createTagElement(snapshot.key, snapshot.val());
+        });
+
+        onChildRemoved(tagsQuery, (snapshot) => {
+          removeRenderedTag(snapshot.key);
+        });
+
+        updateAllTagAges();
+        cleanupExpiredTags();
+
+        // Update age stage every minute so tags move through the 6 monthly stages
+        setInterval(() => {
+          updateAllTagAges();
+        }, 60 * 1000);
+
+        // Clean expired items from DB every hour
+        setInterval(
+          () => {
+            cleanupExpiredTags();
+          },
+          60 * 60 * 1000,
+        );
+      };
+
+      init();
     </script>
   </body>
 </html>
